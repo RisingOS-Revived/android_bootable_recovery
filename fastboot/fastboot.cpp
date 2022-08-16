@@ -67,8 +67,6 @@ void FillWearableFastbootLines(std::vector<std::string>& title_lines) {
   title_lines.push_back(baseband.length() > max_baseband_len
                             ? baseband.substr(0, max_baseband_len - 3) + "..."
                             : baseband);
-
-  title_lines.push_back("Serial #: " + android::base::GetProperty("ro.serialno", ""));
 }
 
 Device::BuiltinAction StartFastboot(Device* device, const std::vector<std::string>& /* args */) {
