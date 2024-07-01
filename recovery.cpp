@@ -749,6 +749,23 @@ static void log_failure_code(ErrorCode code, const std::string& update_package) 
   LOG(INFO) << log_content;
 }
 
+std::string getProcessedVersion() {
+    std::string full_version = "Version " + android::base::GetProperty("ro.rising.display.version", "(unknown)") + " (" + ver_date + ")";
+    std::vector<std::string> parts;
+    std::stringstream ss(full_version);
+    std::string item;
+
+    while (std::getline(ss, item, '-')) {
+        parts.push_back(item);
+    }
+
+    if (parts.size() >= 5) {
+        return parts[0] + "-" + parts[1] + "-" + parts[2] + "-" + parts[4] + "-" + parts[5] + "-" + parts[6];
+    } else {
+        return "(unknown)";
+    }
+}
+
 Device::BuiltinAction start_recovery(Device* device, const std::vector<std::string>& args) {
   static constexpr struct option OPTIONS[] = {
     { "fastboot", no_argument, nullptr, 0 },
@@ -883,8 +900,7 @@ Device::BuiltinAction start_recovery(Device* device, const std::vector<std::stri
   std::string ver_date = ver_date_match.empty() ? "(unknown)" : ver_date_match.str(1);  // Empty if no match.
 
   std::vector<std::string> title_lines = {
-    "Version " + android::base::GetProperty("ro.rising.display.version", "(unknown)") +
-        " (" + ver_date + ")",
+    "Version " + getProcessedVersion(),
   };
   title_lines.push_back("Product name - " + android::base::GetProperty("ro.product.device", ""));
   if (android::base::GetBoolProperty("ro.build.ab_update", false)) {
