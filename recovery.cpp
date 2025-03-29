@@ -784,6 +784,11 @@ static void log_failure_code(ErrorCode code, const std::string& update_package) 
 }
 
 std::string getProcessedVersion() {
+    std::string ver = android::base::GetProperty("ro.rising.build.version", "");
+    std::smatch ver_date_match;
+    std::regex_search(ver, ver_date_match, std::regex("(\\d{8})"));
+    std::string ver_date = ver_date_match.empty() ? "(unknown)" : ver_date_match.str(1);
+
     std::string full_version = "Version " + android::base::GetProperty("ro.rising.display.version", "(unknown)") + " (" + ver_date + ")";
     std::vector<std::string> parts;
     std::stringstream ss(full_version);
