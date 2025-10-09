@@ -68,7 +68,6 @@ bool ask_to_ab_reboot(Device* device);
 bool ask_to_cancel_ota(Device* device);
 bool ask_to_continue_unverified(Device* device);
 bool ask_to_continue_downgrade(Device* device);
-bool ask_to_continue_spl_downgrade(Device* device);
 
 static constexpr int kRecoveryApiVersion = 3;
 // We define RECOVERY_API_VERSION in Android.mk, which will be picked up by build system and packed
@@ -157,7 +156,7 @@ static void ReadSourceTargetBuild(const std::map<std::string, std::string>& meta
 // Downgrading is not allowed unless explicitly enabled in the package and only for
 // incremental packages.
 static bool CheckAbSpecificMetadata(const std::map<std::string, std::string>& metadata,
-                                    RecoveryUI* ui, bool spl_downgrade_approved) {
+                                    RecoveryUI* ui) {
   // Incremental updates should match the current build.
   auto device_pre_build = android::base::GetProperty("ro.build.version.incremental", "");
   auto pkg_pre_build = get_value(metadata, "pre-build-incremental");
@@ -188,10 +187,10 @@ static bool CheckAbSpecificMetadata(const std::map<std::string, std::string>& me
       !android::base::ParseInt(pkg_post_timestamp_string, &pkg_post_timestamp) ||
       pkg_post_timestamp < build_timestamp) {
     if (get_value(metadata, "ota-downgrade") != "yes") {
-      LOG(WARNING) << "Update package is older than the current build, expected a build "
+      LOG(ERROR) << "Update package is older than the current build, expected a build "
                     "newer than timestamp "
                  << build_timestamp << " but package has timestamp " << pkg_post_timestamp
-                 << " this is considered a downgrade";
+                 << " and downgrade not allowed.";
       undeclared_downgrade = true;
     } else if (pkg_pre_build_fingerprint.empty()) {
       LOG(ERROR) << "Downgrade package must have a pre-build version set, not allowed.";
@@ -210,7 +209,7 @@ static bool CheckAbSpecificMetadata(const std::map<std::string, std::string>& me
     }
   }
 
-  if (!spl_downgrade_approved && undeclared_downgrade &&
+  if (undeclared_downgrade &&
       !(ui->IsTextVisible() && ask_to_continue_downgrade(ui->GetDevice()))) {
     return false;
   }
@@ -219,7 +218,7 @@ static bool CheckAbSpecificMetadata(const std::map<std::string, std::string>& me
 }
 
 bool CheckPackageMetadata(const std::map<std::string, std::string>& metadata, OtaType ota_type,
-                          RecoveryUI* ui, bool spl_downgrade_approved) {
+                          RecoveryUI* ui) {
   auto package_ota_type = get_value(metadata, "ota-type");
   auto expected_ota_type = OtaTypeToString(ota_type);
   if (ota_type != OtaType::AB && ota_type != OtaType::BRICK) {
@@ -276,7 +275,7 @@ bool CheckPackageMetadata(const std::map<std::string, std::string>& metadata, Ot
   }
 
   if (ota_type == OtaType::AB) {
-    return CheckAbSpecificMetadata(metadata, ui, spl_downgrade_approved);
+    return CheckAbSpecificMetadata(metadata, ui);
   }
 
   return true;
@@ -433,20 +432,10 @@ static InstallResult TryUpdateBinary(Package* package, bool* wipe_cache,
   bool device_only_supports_ab = device_supports_ab && !ab_device_supports_nonab;
   bool device_supports_virtual_ab = android::base::GetBoolProperty("ro.virtual_ab.enabled", false);
 
-  bool spl_downgrade_approved = false;
-  const auto allow_spl_downgrade =
-      android::base::GetBoolProperty("persist.vendor.recovery_allow_spl_downgrade", false);
   const auto current_spl = android::base::GetProperty("ro.build.version.security_patch", "");
   if (ViolatesSPLDowngrade(zip, current_spl)) {
-    if (!allow_spl_downgrade || !ui->IsTextVisible()) {
-      LOG(ERROR) << "Denying OTA because it's SPL downgrade";
-      return INSTALL_ERROR;
-    }
-    if (!ask_to_continue_spl_downgrade(device)) {
-      LOG(ERROR) << "User denied SPL downgrade";
-      return INSTALL_ERROR;
-    }
-    spl_downgrade_approved = true;
+    LOG(ERROR) << "Denying OTA because it's SPL downgrade";
+    return INSTALL_ERROR;
   }
 
   const auto reboot_to_recovery = [] {
@@ -473,7 +462,7 @@ static InstallResult TryUpdateBinary(Package* package, bool* wipe_cache,
   // Package does not declare itself as an A/B package, but device only supports A/B;
   //   still calls CheckPackageMetadata to get a meaningful error message.
   if (package_is_ab || device_only_supports_ab) {
-    if (!CheckPackageMetadata(metadata, OtaType::AB, ui, spl_downgrade_approved)) {
+    if (!CheckPackageMetadata(metadata, OtaType::AB, ui)) {
       log_buffer->push_back(android::base::StringPrintf("error: %d", kUpdateBinaryCommandFailure));
       return INSTALL_ERROR;
     }
